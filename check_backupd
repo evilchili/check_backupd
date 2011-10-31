@@ -79,8 +79,6 @@ while getopts vhVw:c: flag; do
             	c)
 			CRIT_CUTOFF=$OPTARG
 			;;
-		*)
-			echo "Ignoring unknown arg: ${flag} ${OPTARG}"
 	esac
 done
 
