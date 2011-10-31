@@ -1,0 +1,123 @@
+#!/bin/bash
+#
+# check_backupd 
+#	-- check status of Time Machine backups
+#
+# Author: Greg Boyington <evilchili@gmail.com>
+# 
+# Copyright 2011 Greg Boyington. All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without modification, are
+# permitted provided that the following conditions are met:
+# 
+#    1. Redistributions of source code must retain the above copyright notice, this list of
+#       conditions and the following disclaimer.
+# 
+#    2. Redistributions in binary form must reproduce the above copyright notice, this list
+#       of conditions and the following disclaimer in the documentation and/or other materials
+#       provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY GREG BOYINGTON ''AS IS'' AND ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL GREG BOYINGTON OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# The views and conclusions contained in the software and documentation are those of the
+# authors and should not be interpreted as representing official policies, either expressed
+# or implied, of Greg Boyington.
+# 
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+PROGNAME=`basename $0`
+PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+REVISION=`echo '$Revision: 1 $' | sed -e 's/[^0-9.]//g'`
+
+WARN_CUTOFF=43200 # 12hrs
+CRIT_CUTOFF=86400 # 24hrs
+VERBOSE=0
+
+. $PROGPATH/utils.sh
+
+
+print_usage() {
+	echo "Usage: $PROGNAME"
+}
+
+print_help() {
+	print_revision $PROGNAME $REVISION
+	echo ""
+	print_usage
+	echo ""
+	echo "This plugin checks the date of the last successful Time Machine (backupd) backup."
+	echo ""
+	support
+	exit 0
+}
+
+while getopts vhVw:c: flag; do
+        case $flag in
+		h)
+			print_help
+			exit 0
+			;;
+		V)
+			print_revision $PROGNAME $REVISION
+			exit 0
+			;;
+		v)	
+			VERBOSE=1		
+			;;
+            	w)
+			WARN_CUTOFF=$OPTARG
+			;;
+            	c)
+			CRIT_CUTOFF=$OPTARG
+			;;
+		*)
+			echo "Ignoring unknown arg: ${flag} ${OPTARG}"
+	esac
+done
+
+# 1320070515 hostname com.apple.backupd[18348]: Backup completed successfully.
+logentry=`/usr/bin/syslog -T sec -F bsd | egrep "com.apple.backupd.*: Backup completed"|tail -1`
+status=$?
+if test $VERBOSE -eq 1; then
+	echo ${logentry}
+fi
+if test ${status} -eq 127; then
+	echo "BACKUPD UNKNOWN - command not found (do you have permission to execute syslog?"
+	exit -1
+elif test ${status} -ne 0 ; then
+	echo "WARNING - syslog command returned state $status"
+	exit $STATE_WARNING
+fi
+if test -z "${logentry}" ; then 
+	echo "BACKUPD CRITICAL - No successful backup recorded in syslog!"
+	exit $STATE_CRITICAL
+fi
+timestamp_seconds=`echo ${logentry} | cut -f1 -d ' '`
+if test -z ${timestamp_seconds} ; then	
+	echo "BACKUPD UNKNOWN - Could not detect timestamp in output!"
+	exit $STATE_UNKNOWN
+fi
+
+timestamp_date=`date -r ${timestamp_seconds}`
+now=`date -j -f "%a %b %d %T %Z %Y" "\`date\`" "+%s"`
+diff=$((${now}-${timestamp_seconds}))
+echo "${timestamp_seconds} ${now} {$diff} ${WARN_CUTOFF} ${CRIT_CUTOFF}"
+if test $diff -ge $CRIT_CUTOFF ; then
+	echo "BACKUPD CRITICAL: Last backup ${timestamp_date} (${diff}s ago)"
+	exit $STATE_CRITICAL
+elif test $diff -ge $WARN_CUTOFF ; then
+	echo "BACKUPD WARNING: Last backup ${timestamp_date} (${diff}s ago)"
+	exit $STATE_WARN
+else:
+	echo "BACKUPD OK: Last backup ${timestamp_date}"
+	exit $STATE_OK
+fi
