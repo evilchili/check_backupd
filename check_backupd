@@ -108,14 +108,13 @@ fi
 timestamp_date=`date -r ${timestamp_seconds}`
 now=`date -j -f "%a %b %d %T %Z %Y" "\`date\`" "+%s"`
 diff=$((${now}-${timestamp_seconds}))
-echo "${timestamp_seconds} ${now} {$diff} ${WARN_CUTOFF} ${CRIT_CUTOFF}"
 if test $diff -ge $CRIT_CUTOFF ; then
 	echo "BACKUPD CRITICAL: Last backup ${timestamp_date} (${diff}s ago)"
 	exit $STATE_CRITICAL
 elif test $diff -ge $WARN_CUTOFF ; then
 	echo "BACKUPD WARNING: Last backup ${timestamp_date} (${diff}s ago)"
 	exit $STATE_WARN
-else:
+else
 	echo "BACKUPD OK: Last backup ${timestamp_date}"
 	exit $STATE_OK
 fi
